@@ -977,12 +977,14 @@ export default function App() {
                 journal={journal}
                 stats={stats}
                 history={history}
+                inbox={inbox}
                 onAddTasbih={handleTasbihAdd}
                 onAddTarget={handleTargetAdd}
                 onEditTasbih={handleTasbihEdit}
                 onEditTarget={handleTargetEdit}
                 onScheduleReminder={scheduleReminderNotification}
                 onSetTheme={setTheme}
+                onAddJournalEntry={addJournalEntry}
               />
           );
       default:

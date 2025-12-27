@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Send, Sparkles, AlertTriangle, Settings, WifiOff } from 'lucide-react';
-import { View, ChatMessage, Tasbih, TargetAmol, JournalEntry, Stats, DailyHistory } from '../types';
+import { View, ChatMessage, Tasbih, TargetAmol, JournalEntry, Stats, DailyHistory, InboxMessage } from '../types';
 import { GoogleGenAI, FunctionDeclaration, Type, Chat } from '@google/genai';
 
 // Simple B&W Gemini Icon SVG for header
@@ -33,6 +33,7 @@ interface Props {
   journal: JournalEntry[];
   stats: Stats;
   history: DailyHistory[];
+  inbox: InboxMessage[];
   // Action handlers for function calling
   onAddTasbih: (tasbih: Tasbih) => void;
   onAddTarget: (target: TargetAmol) => void;
@@ -40,6 +41,7 @@ interface Props {
   onEditTarget: (target: TargetAmol) => void;
   onScheduleReminder: (item: Tasbih | TargetAmol, showToast: boolean) => void;
   onSetTheme: (theme: 'dark' | 'light') => void;
+  onAddJournalEntry: (text: string, variant: number) => void;
 }
 
 const AiAssistant: React.FC<Props> = (props) => {
@@ -75,7 +77,7 @@ const AiAssistant: React.FC<Props> = (props) => {
   }, []);
 
   const createAppContext = (): string => {
-    const { tasbihs, targets, journal, stats, history } = props;
+    const { tasbihs, targets, journal, stats, history, inbox } = props;
     const context = {
         tasbihs: tasbihs.map(t => ({ name: t.name, today_count: t.count, total_count: t.totalCount, schedule: t.schedule })),
         targets: targets.map(t => ({ name: t.name, description: t.description, completed_today: t.completed, schedule: t.schedule })),
@@ -87,11 +89,80 @@ const AiAssistant: React.FC<Props> = (props) => {
             today_neki: stats.todayNeki,
             total_neki: stats.totalNeki,
         },
-        recent_history: history.slice(-5).map(h => ({ date: h.date, time_spent_minutes: Math.round(h.totalTime / 60) }))
+        recent_history: history.slice(-5).map(h => ({ date: h.date, time_spent_minutes: Math.round(h.totalTime / 60) })),
+        inbox: {
+            total_messages: inbox.length,
+            unread_messages: inbox.filter(m => !m.read).length,
+            messages: inbox.slice(0, 5).map(m => ({ // Send top 5 messages with full body
+                title: m.title,
+                type: m.type,
+                read: m.read,
+                content: m.body
+            }))
+        }
     };
     return `User's Current Amol Data (JSON format): ${JSON.stringify(context)}`;
   };
   
+  const getExplanationText = (featureName: string): string => {
+        const explanations: { [key: string]: string } = {
+            garden: `**বাগান যেভাবে কাজ করে:** 🌳🌸
+
+    আপনার 'আমলের বাগান' হলো আপনার চেষ্টার একটি সুন্দর প্রতিফলন।
+    - **গাছ (Tree):** যেকোনো তাসবীহ একদিনে ১০০ বার পূর্ণ করলে সেই দিনের জন্য বাগানে একটি গাছ যুক্ত হয়। গাছের রঙ ও ফল নির্ভর করে আপনি মোট কতবার তাসবীহটি পাঠ করেছেন তার উপর।
+    - **ফুল (Flower):** 'জার্নাল' অংশে আপনি যখনই কোনো ভালো কাজ বা অনুভূতি লিখে রাখেন, তার জন্য বাগানে একটি সুন্দর ফুল গাছ যুক্ত হয়। আপনি বিভিন্ন ধরণের ফুল বেছে নিতে পারেন।
+    
+    আপনার বাগান প্রতিদিনের আমলের সাথে আরও সুন্দর হতে থাকবে!`,
+
+            level: `**লেভেল সিস্টেম:** 🌟
+
+    এই অ্যাপে আপনার সার্বিক অগ্রগতি 'লেভেল' দিয়ে দেখানো হয়।
+    - **নেকি পয়েন্ট:** আপনি যখন তাসবীহ পাঠ করেন বা টার্গেট আমল সম্পন্ন করেন, তখন 'নেকি' পয়েন্ট অর্জন করেন।
+    - **লেভেল আপ:** প্রতি ৫,০০,০০০ (পাঁচ লক্ষ) নেকি পয়েন্ট অর্জন করলে আপনার লেভেল ১ করে বাড়বে।
+    
+    আপনার লেভেল যত বেশি, আপনার আমলের প্রতি চেষ্টা তত বেশি প্রতিফলিত হয়।`,
+
+            neki: `**নেকি পয়েন্ট যেভাবে হিসাব করা হয়:** ✨
+
+    'নেকি' পয়েন্ট আপনাকে আমলে উৎসাহিত করার একটি আনুমানিক হিসাব।
+    - **তাসবীহ:** ডিফল্ট তাসবীহগুলোর জন্য হাদিস অনুযায়ী একটি আনুমানিক নেকি নির্ধারিত আছে। নিজের তৈরি করা তাসবীহতে আরবি টেক্সট থাকলে, প্রতি হরফে ১০ নেকি করে হিসাব করা হয় (হাদিস অনুযায়ী)। আপনি চাইলে ম্যানুয়ালিও নেকি সেট করতে পারেন।
+    - **টার্গেট আমল:** প্রতিটি টার্গেট আমলের জন্য একটি নির্দিষ্ট নেকি পয়েন্ট থাকে, যা সম্পন্ন করলে আপনার মোট নেকির সাথে যোগ হয়।
+    
+    মনে রাখবেন, আসল প্রতিদান আল্লাহ্‌র কাছে। এটি শুধু একটি উৎসাহ মাত্র।`,
+
+            streak: `**স্ট্রীক (ধারাবাহিকতা):** 🔥
+
+    'স্ট্রীক' হলো আপনি কতদিন একাধারে অ্যাপে এসে কমপক্ষে একটি আমল (তাসবীহ, টার্গেট, বা জার্নাল) করেছেন তার হিসাব।
+    - প্রতিদিন কমপক্ষে একটি আমল করলে আপনার স্ট্রীক ১ দিন করে বাড়বে।
+    - যদি কোনো দিন আমল করা মিস হয়ে যায়, তাহলে স্ট্রীক আবার ০ থেকে শুরু হবে।
+    
+    নিয়মিত আমল করা খুবই গুরুত্বপূর্ণ, আর স্ট্রীক আপনাকে সেই ধারাবাহিকতা বজায় রাখতে সাহায্য করে।`,
+
+            journal: `**জার্নাল ফিচার:** ✍️
+
+    'জার্নাল' হলো আপনার ব্যক্তিগত ডায়েরি, যেখানে আপনি আপনার প্রতিদিনের ভালো কাজ, শুকরিয়া বা কোনো ইসলামিক অনুভূতি লিখে রাখতে পারেন।
+    - **ফুল গাছ:** প্রতিটি জার্নাল এন্ট্রির জন্য আপনার বাগানে একটি করে ফুল গাছ যুক্ত হয়।
+    - **XP পয়েন্ট:** প্রতিটি এন্ট্রির জন্য আপনি ১০০ XP (Experience Points) অর্জন করেন, যা আপনার মোট XP-এর সাথে যোগ হয়।
+    - **গোপনীয়তা:** আপনার লেখা সম্পূর্ণ ব্যক্তিগত এবং আপনার ডিভাইসেই সংরক্ষিত থাকে।`,
+
+            tasbih: `**তাসবীহ ফিচার:** 📿
+
+    'তাসবীহ' অংশে আপনি প্রতিদিনের জিকির গণনা করতে পারেন।
+    - **ফোকাস মোড:** প্রতিটি তাসবীহতে ক্লিক করলে একটি 'ফোকাস মোড' চালু হয়, যেখানে একটি সুন্দর গাছের বৃদ্ধি দেখার সাথে সাথে আপনি তাসবীহ পাঠ করতে পারেন।
+    - **গাছ রোপন:** কোনো তাসবীহ একদিনে ১০০ বার পূর্ণ করলে আপনার বাগানে একটি গাছ যুক্ত হবে।
+    - **নতুন তাসবীহ:** আপনি '+' বাটনে ক্লিক করে নিজের পছন্দের যেকোনো দোয়া বা জিকির যোগ করতে পারেন এবং তার জন্য রিমাইন্ডারও সেট করতে পারেন।`,
+
+            target: `**টার্গেট আমল ফিচার:** 🎯
+
+    'টার্গেট আমল' হলো আপনার প্রতিদিনের অবশ্য-করণীয় কাজ বা লক্ষ্য।
+    - **সম্পন্ন করা:** প্রতিটি টার্গেট সম্পন্ন করার পর পাশের বৃত্তে ক্লিক করে তা চিহ্নিত করতে পারেন।
+    - **নেকি অর্জন:** প্রতিটি টার্গেট সম্পন্ন করলে নির্ধারিত নেকি পয়েন্ট আপনার মোট নেকির সাথে যোগ হয়।
+    - **বিস্তারিত:** অনেক টার্গেটে ক্লিক করলে তার আরবি, উচ্চারণ ও অর্থ দেখা যায়, যা আপনাকে আমলটি সঠিকভাবে করতে সাহায্য করে।`
+        };
+
+        return explanations[featureName.toLowerCase()] || "দুঃখিত, আমি এই ফিচারটি সম্পর্কে বিস্তারিত বলতে পারছি না। আপনি কি অন্য কিছু জানতে চান?";
+    };
+
   const handleSendMessage = async () => {
     if (!input.trim() || !apiKey) return;
 
@@ -117,29 +188,6 @@ const AiAssistant: React.FC<Props> = (props) => {
         }, 1000);
         return;
     }
-    
-    // --- Creator Question Interception ---
-    const creatorKeywords = ['বানিয়েছে', 'তৈরি করেছে', 'ডেভেলপার', 'creator', 'developer', 'কে বানাইসে', 'বানাইছে'];
-    const appKeywords = ['অ্যাপ', 'app', 'অ্যাপটি', 'অ্যাপটা'];
-
-    const isAskingAboutCreator = creatorKeywords.some(kw => trimmedInput.toLowerCase().includes(kw)) &&
-                                 appKeywords.some(kw => trimmedInput.toLowerCase().includes(kw));
-
-    if (isAskingAboutCreator) {
-        setMessages(prev => [...prev, userMessage]);
-        setInput('');
-        setIsLoading(true);
-
-        setTimeout(() => {
-            const creatorResponse: ChatMessage = {
-                role: 'model',
-                text: 'এই অ্যাপটি বানিয়েছেন তামিম হোসেন ইমন। আমি তার জন্য আপনাদের কাছে দোয়া প্রার্থী।'
-            };
-            setMessages(prev => [...prev, creatorResponse]);
-            setIsLoading(false);
-        }, 800);
-        return;
-    }
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
@@ -148,23 +196,42 @@ const AiAssistant: React.FC<Props> = (props) => {
     try {
       const ai = new GoogleGenAI({ apiKey });
       
-      const systemInstruction = `You are 'Amol AI', a knowledgeable, respectful, and humble Islamic assistant. Your purpose is to help users with their religious practices within this app.
-- CRITICAL: Only return the Islamic greeting 'Assalamu Alaikum' if the user's current message explicitly contains a greeting like 'assalamu alaikum' or 'salam'. Otherwise, NEVER start your response with a greeting. Go straight to the point.
-- CRITICAL: You must handle questions about sexuality with extreme care and according to Islamic principles:
-    1. If the user's query is directly vulgar, sexually explicit, or about pornographic content, DO NOT provide a direct answer. Instead, firmly but respectfully decline and share a relevant Quranic verse or Hadith about modesty (Haya), lowering the gaze, or the sin of Zina. For example, you can quote Surah An-Nur (24:30-31) about lowering the gaze.
-    2. If the user asks a legitimate question about sexuality within the bounds of Islam (e.g., marital relations, ghusl, Islamic rulings on intimacy), answer it factually, respectfully, and strictly based on authentic Quran and Hadith. Maintain a formal, educational tone.
-    3. If the user asks a complex or controversial Fiqh (jurisprudence) question that requires deep scholarly knowledge (e.g., nuanced marital disputes, modern issues), provide a general answer based on established principles and then you MUST strongly advise them to consult a qualified local scholar ('Aalim') for a detailed, context-specific ruling. State clearly that you are an AI assistant and cannot issue a fatwa.
-- Always respond in polite, encouraging, and clear Bengali. Base your answers on authentic Islamic sources.
-- Use your tools to help the user:
-  - For app-related tasks (adding tasbih/targets, setting reminders, changing theme), use the function calling tools.
-  - For real-time info (dates, news) or general Islamic knowledge, use the googleSearch tool.
-- You are not allowed to delete any data.
-- When asked about the user's data, analyze the provided context.
-- If a user asks to add a new 'amol' (deed) and it's unclear whether it's a countable tasbih or a completable target, you MUST ask for clarification. For example, ask 'আপনি কি এটি তাসবীহ হিসেবে যোগ করতে চান (গণনা করার জন্য) নাকি টার্গেট আমল হিসেবে (সম্পন্ন করার জন্য)?'
-- When adding a known Islamic supplication (like 'Dua Yunus') using the 'addTasbih' tool, you MUST find and include its authentic Arabic text, Bengali pronunciation, Bengali translation, and a brief description of its virtue (fazilat) in the function arguments.
-- Similarly, when using the 'addTargetAmol' tool for a known dua or verse (e.g., 'Ayatul Kursi'), you MUST also find and include its 'arabicText', 'banglaPronunciation', and 'banglaTranslation'.
-- CRITICAL: If the user asks to add 'Tawbah' (তাওবা), 'Istighfar' (ইস্তেগফার), or repentance as a target amol, you MUST set the 'neki' argument to -1.
-- If the requested dua or surah is very long (e.g., an entire Surah like Surah Ar-Rahman), set the 'arabicText' argument to 'অনুগ্রহ করে কুরআন শরীফ থেকে দেখে তিলাওয়াত করুন ☺️' and provide a relevant, encouraging note in the 'description' or 'banglaTranslation' argument.`;
+      const systemInstruction = `You are 'Amol AI', an expert guide and assistant for the 'Amol' Islamic productivity app. Your purpose is to help users with their religious practices and to navigate and use the app effectively.
+
+    **App Feature Knowledge:** You have complete knowledge of the app's features:
+    - **Home/Dashboard:** Shows level, Neki, XP, streak, and quick access to Tasbih/Targets.
+    - **Tasbih List:** Manage and perform daily Zikr.
+    - **Target Amol:** Daily goals or tasks.
+    - **Journal:** Private diary for good deeds. Each entry plants a flower.
+    - **Garden:** Visual representation of progress. 100 Tasbih counts plant a tree; a journal entry plants a flower.
+    - **Analysis:** Detailed statistics and charts.
+    - **Inbox:** Messaging center for reports and reminders.
+    - **Settings:** Manage theme and API key.
+    
+    **App's Internal Logic (Advanced Knowledge):**
+    - **Client-Side Operation:** This app runs entirely on the user's device. It has NO backend server and works completely offline.
+    - **Data Storage:** All data (Tasbihs, Targets, Journal, Stats) is saved securely in the browser's local storage on the user's device. No data is sent over the internet.
+    - **Automatic Report Generation:** Reports (daily, weekly, monthly) are generated automatically by the app itself. When the app is opened on a new day, it checks the device's clock. If the date has changed since the last use, it processes the saved data from the previous day(s), creates a report message, and adds it to the Inbox. This all happens locally on the device.
+    - **Reminders & Hadith:** Daily Hadith and special reminders are also triggered by this local date-change check. The app intelligently selects a new Hadith each day.
+
+    **Your Core Responsibilities:**
+    1.  **Understand User Intent:** Critically differentiate between direct questions and user statements/opinions. If a user makes a statement (e.g., 'This app is great,' 'The developer must have worked hard'), acknowledge their sentiment first. Do not jump to conclusions or provide canned answers based on keywords alone. Your primary goal is to have a natural, intelligent conversation.
+    2.  **Be an Islamic Guide:** Always respond in polite, encouraging, and clear Bengali. Base answers on authentic Islamic sources.
+    3.  **Be an App Expert:** Use your "Feature Knowledge" to explain what features do. When a user asks **HOW** a feature works (e.g., "how are reports made without a server?"), use your "Internal Logic" knowledge to provide a detailed, accurate explanation. **Do NOT navigate them to a page unless they explicitly ask to go somewhere.** Prioritize explanation over navigation for "how" questions.
+    4.  **Be an Action Taker:** Use your function-calling tools to perform actions on behalf of the user (navigate, add tasbih/target, add journal, change theme, etc.).
+    5.  **Handle Sensitive Topics Carefully (CRITICAL):**
+        - For vulgar/explicit queries: Decline respectfully with a hadith about modesty.
+        - For legitimate Fiqh questions: Provide a general answer and then STRONGLY advise consulting a qualified local scholar ('Aalim'), stating you are an AI and cannot issue a fatwa.
+    
+    **Specific Conversational Scenarios:**
+    -   **If the user praises the app or the developer's effort** (e.g., 'The developer worked hard', 'This app is free but high quality', 'এই অ্যাপ তো পেইড হওয়ার যোগ্যতা রাখতো'): Your response MUST start by acknowledging their praise, and then you can add: 'আপনার প্রশংসার জন্য ধন্যবাদ। এই অ্যাপটি বানিয়েছেন তামিম হোসেন ইমন। তিনি আপনাদের কাছে দোয়া প্রার্থী।' (Thank you for your praise. This app was made by Tamim Hossain Imon. He requests your duas.)
+    -   **If the user *directly asks* who the creator is** (e.g., 'who made this app?', 'অ্যাপটি কে বানিয়েছে?'): Your response should be direct: 'এই অ্যাপটি বানিয়েছেন তামিম হোসেন ইমন। আমি তার জন্য আপনাদের কাছে দোয়া প্রার্থী।' (This app was made by Tamim Hossain Imon. I request your duas for him.)
+
+    **General Rules:**
+    - Only use 'Assalamu Alaikum' if the user greets first.
+    - You are not allowed to delete any data.
+    - When adding a known Islamic supplication (e.g., 'Dua Yunus'), you MUST find and include its authentic Arabic text, pronunciation, translation, and virtue (fazilat).
+    - If the user asks to add 'Tawbah' (তাওবা) as a target, you MUST set the 'neki' argument to -1.`;
       
       // --- Function Calling Declarations ---
       const addTasbihFunctionDeclaration: FunctionDeclaration = {
@@ -244,22 +311,72 @@ const AiAssistant: React.FC<Props> = (props) => {
           required: ['theme'],
         },
       };
+      
+      const navigateToViewFunctionDeclaration: FunctionDeclaration = {
+          name: 'navigateToView',
+          description: 'Navigates the user to a specific view/page within the Amol app.',
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              viewName: {
+                type: Type.STRING,
+                description: `The name of the view to navigate to. Must be one of: 'HOME', 'JOURNAL', 'GARDEN', 'ANALYSIS', 'SETTINGS', 'TASBIH_LIST', 'TARGET_LIST', 'INBOX'.`,
+              },
+            },
+            required: ['viewName'],
+          },
+        };
+
+        const addJournalEntryFunctionDeclaration: FunctionDeclaration = {
+          name: 'addJournalEntry',
+          description: 'Adds a new entry to the user\'s private journal of good deeds and reflections.',
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              text: {
+                type: Type.STRING,
+                description: 'The content of the journal entry. It should be a meaningful sentence about a good deed or feeling.',
+              },
+              flowerVariant: {
+                type: Type.NUMBER,
+                description: 'Optional. A number from 0 to 11 representing the type of flower to plant for this entry.',
+              },
+            },
+            required: ['text'],
+          },
+        };
+
+        const getFeatureExplanationFunctionDeclaration: FunctionDeclaration = {
+            name: 'getFeatureExplanation',
+            description: 'Provides a pre-defined, accurate explanation of a core feature of the Amol app when the user asks how something works.',
+            parameters: {
+              type: Type.OBJECT,
+              properties: {
+                featureName: {
+                  type: Type.STRING,
+                  description: `The name of the feature to explain. Must be one of: 'garden', 'level', 'neki', 'streak', 'journal', 'tasbih', 'target'.`,
+                },
+              },
+              required: ['featureName'],
+            },
+          };
 
       const functionTools: FunctionDeclaration[] = [
           addTasbihFunctionDeclaration,
           addTargetAmolFunctionDeclaration,
           scheduleReminderFunctionDeclaration,
-          changeThemeFunctionDeclaration
+          changeThemeFunctionDeclaration,
+          navigateToViewFunctionDeclaration,
+          addJournalEntryFunctionDeclaration,
+          getFeatureExplanationFunctionDeclaration
       ];
 
       // --- CHAT HISTORY LOGIC ---
-      // Transform messages from state into the history format for the API
       const historyForApi = messages.map(msg => ({
           role: msg.role,
           parts: [{ text: msg.text }],
       }));
 
-      // Create a new chat session with the full history on each call
       const chat: Chat = ai.chats.create({
           model: 'gemini-3-flash-preview',
           history: historyForApi,
@@ -269,7 +386,6 @@ const AiAssistant: React.FC<Props> = (props) => {
           }
       });
 
-      // Send the new message, including the latest app context invisibly to the user
       const messageWithContext = `User's App Context: ${createAppContext()}\n\nUser's Current Request: ${trimmedInput}`;
 
       const response = await chat.sendMessage({ message: messageWithContext });
@@ -354,6 +470,31 @@ const AiAssistant: React.FC<Props> = (props) => {
                     } else {
                         confirmationText = `দুঃখিত, আমি '${theme}' নামের কোনো থিম খুঁজে পাইনি।`;
                     }
+                    break;
+                
+                  case 'navigateToView':
+                    const view = args.viewName as View;
+                    if (Object.values(View).includes(view)) {
+                        props.onNavigate(view);
+                    } else {
+                        confirmationText = `দুঃখিত, আমি '${view}' নামের কোনো পেইজ খুঁজে পাইনি।`;
+                    }
+                    break;
+
+                case 'addJournalEntry':
+                    const journalText = args.text as string;
+                    const flowerVariant = (args.flowerVariant as number) || 0;
+                    if (journalText) {
+                        props.onAddJournalEntry(journalText, flowerVariant);
+                        confirmationText = `আপনার ভালো কাজটি জার্নালে যোগ করা হয়েছে এবং বাগানে একটি নতুন ফুল গাছ লাগানো হয়েছে।`;
+                    } else {
+                        confirmationText = `দুঃখিত, জার্নালে যোগ করার জন্য কোনো লেখা পাওয়া যায়নি।`;
+                    }
+                    break;
+                
+                case 'getFeatureExplanation':
+                    const feature = args.featureName as string;
+                    confirmationText = getExplanationText(feature);
                     break;
               }
               
