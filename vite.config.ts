@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
+      base: './', // এই লাইনটি সাদা স্ক্রিন দূর করবে
       server: {
         port: 3000,
         host: '0.0.0.0',
@@ -18,6 +19,12 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        outDir: 'dist',
+        assetsDir: 'assets',
+        emptyOutDir: true
       }
     };
 });
+
