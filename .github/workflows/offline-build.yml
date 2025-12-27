@@ -1,3 +1,4 @@
+
 name: Build Offline APK
 on: workflow_dispatch
 
@@ -14,14 +15,24 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Create Offline Project
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install and Build
         run: |
-          # কোনো কনফিগারেশন ছাড়াই সরাসরি অ্যান্ড্রয়েড প্রজেক্ট তৈরি
-          npm install -g @capacitor/cli @capacitor/core @capacitor/android
-          # একটি ডামি প্যাকেজ ফাইল তৈরি যাতে এরর না আসে
+          # এক লাইনে সব প্রয়োজনীয় প্যাকেজ ইনস্টল করা হচ্ছে
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          
+          # প্যাকেজ ফাইল তৈরি
           echo '{"name": "amol-app", "version": "1.0.0"}' > package.json
+          
+          # ক্যাপাসিটর শুরু এবং অ্যান্ড্রয়েড প্ল্যাটফর্ম যোগ
           npx cap init "AmolApp" "com.amol.offline" --web-dir .
           npx cap add android
+          
+          # আপনার ফাইলগুলো অ্যান্ড্রয়েড ফোল্ডারে কপি করা
           npx cap copy android
 
       - name: Build APK
@@ -35,4 +46,3 @@ jobs:
         with:
           name: My-Offline-App
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
