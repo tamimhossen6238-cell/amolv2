@@ -1,0 +1,43 @@
+name: Build Offline APK
+on: 
+  workflow_dispatch: # এটি দিলে আপনি নিজে বাটন টিপে বিল্ড শুরু করতে পারবেন
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies and Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          # আপনার অ্যাপের নাম 'AmolApp' এবং আইডি 'com.amol.offline' দিচ্ছি
+          npx cap init "AmolApp" "com.amol.offline" --web-dir .
+          npx cap add android
+
+      - name: Sync Code to Android
+        run: npx cap copy android
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: My-Offline-App
+          path: android/app/build/outputs/apk/debug/app-debug.apk
